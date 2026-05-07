@@ -1,161 +1,411 @@
 <!DOCTYPE html>
 <html>
 <head>
+  <meta charset="UTF-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
   <title>Bird Forest Game</title>
   <style>
+    :root {
+      background: radial-gradient(circle at top center, rgba(255,255,255,0.25), transparent 35%), linear-gradient(to top, #2e7d32, #87ceeb);
+      color: #fff;
+    }
+
+    * {
+      box-sizing: border-box;
+    }
+
+    html,
     body {
       margin: 0;
-      overflow: hidden;
-      background: linear-gradient(to top, #2e7d32, #87ceeb);
+      min-height: 100%;
+      height: 100%;
     }
-    canvas {
+
+    body {
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: inherit;
+      font-family: system-ui, sans-serif;
+      overflow: hidden;
+    }
+
+    #gameWrapper {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      max-width: 960px;
+      max-height: 100vh;
+      min-height: 0;
+      border-radius: 20px;
+      overflow: hidden;
+      box-shadow: 0 18px 60px rgba(0, 0, 0, 0.25);
+      background: rgba(255, 255, 255, 0.05);
+    }
+
+    #gameCanvas {
       display: block;
+      width: 100%;
+      height: 100%;
+    }
+
+    #hud {
+      position: absolute;
+      left: 0;
+      right: 0;
+      top: 0;
+      padding: 1rem;
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 1rem;
+      pointer-events: none;
+    }
+
+    .info-box,
+    .button-group {
+      pointer-events: auto;
+      display: flex;
+      gap: 0.75rem;
+      align-items: center;
+      flex-wrap: wrap;
+    }
+
+    .info-box {
+      background: rgba(0, 0, 0, 0.35);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+      padding: 0.6rem 1rem;
+      font-size: clamp(0.9rem, 1rem, 1.1rem);
+      color: #fff;
+      backdrop-filter: blur(8px);
+    }
+
+    .button-group button {
+      border: none;
+      border-radius: 999px;
+      padding: 0.75rem 1rem;
+      background: rgba(255, 255, 255, 0.16);
+      color: #fff;
+      font-size: 0.95rem;
+      cursor: pointer;
+      transition: background 160ms ease, transform 160ms ease;
+    }
+
+    .button-group button:hover {
+      background: rgba(255, 255, 255, 0.28);
+      transform: translateY(-1px);
+    }
+
+    .button-group button:disabled {
+      opacity: 0.5;
+      cursor: not-allowed;
+    }
+
+    #message {
+      position: absolute;
+      left: 50%;
+      top: 50%;
+      transform: translate(-50%, -50%);
+      background: rgba(0, 0, 0, 0.65);
+      color: #fff;
+      padding: 1rem 1.5rem;
+      border-radius: 16px;
+      text-align: center;
+      font-size: clamp(1rem, 1.3vw, 1.4rem);
+      display: none;
+      pointer-events: none;
+    }
+
+    @media (max-width: 640px) {
+      #gameWrapper {
+        max-width: 100%;
+        border-radius: 0;
+      }
+
+      #hud {
+        flex-direction: column;
+        align-items: stretch;
+        gap: 0.5rem;
+      }
+
+      .button-group {
+        justify-content: center;
+      }
     }
   </style>
 </head>
 <body>
+  <div id="gameWrapper">
+    <canvas id="gameCanvas"></canvas>
+    <div id="hud">
+      <div class="info-box">Score: <span id="scoreValue">0</span></div>
+      <div class="button-group">
+        <button id="playBtn">Play</button>
+        <button id="pauseBtn" disabled>Pause</button>
+        <button id="resumeBtn" disabled>Resume</button>
+      </div>
+    </div>
+    <div id="message"></div>
+  </div>
 
-<canvas id="gameCanvas"></canvas>
+  <script>
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    const scoreValue = document.getElementById('scoreValue');
+    const playBtn = document.getElementById('playBtn');
+    const pauseBtn = document.getElementById('pauseBtn');
+    const resumeBtn = document.getElementById('resumeBtn');
+    const messageBox = document.getElementById('message');
 
-<script>
-const canvas = document.getElementById("gameCanvas");
-const ctx = canvas.getContext("2d");
+    let canvasWidth = 0;
+    let canvasHeight = 0;
+    let animationId;
+    let treeInterval;
+    let scoreInterval;
 
-canvas.width = window.innerWidth;
-canvas.height = window.innerHeight;
+    const state = {
+      started: false,
+      paused: false,
+      gameOver: false,
+      score: 0,
+      speed: 2.2,
+      gap: 190,
+      treeWidth: 60
+    };
 
-// Bird
-let bird = {
-  x: 120,
-  y: canvas.height / 2,
-  radius: 15,
-  dy: 0,
-  gravity: 0.5,
-  lift: -10
-};
+    const bird = {
+      x: 120,
+      y: 100,
+      radius: 16,
+      dy: 0,
+      gravity: 0.35,
+      lift: -8
+    };
 
-// Trees (pipes style)
-let trees = [];
-let gap = 180;
-let width = 60;
-let speed = 4;
+    const trees = [];
 
-let gameOver = false;
-
-// Create trees
-function createTree() {
-  let topHeight = Math.random() * (canvas.height - gap - 100) + 50;
-
-  trees.push({
-    x: canvas.width,
-    top: topHeight,
-    bottom: canvas.height - topHeight - gap
-  });
-}
-
-// Draw bird
-function drawBird() {
-  ctx.beginPath();
-  ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
-  ctx.fillStyle = "yellow";
-  ctx.fill();
-  ctx.closePath();
-
-  // Eye
-  ctx.beginPath();
-  ctx.arc(bird.x + 5, bird.y - 5, 3, 0, Math.PI * 2);
-  ctx.fillStyle = "black";
-  ctx.fill();
-}
-
-// Draw trees
-function drawTrees() {
-  ctx.fillStyle = "#4e342e"; // trunk
-
-  trees.forEach(tree => {
-    // Top tree
-    ctx.fillRect(tree.x, 0, width, tree.top);
-
-    // Bottom tree
-    ctx.fillRect(tree.x, canvas.height - tree.bottom, width, tree.bottom);
-
-    // Leaves
-    ctx.fillStyle = "#2e7d32";
-    ctx.fillRect(tree.x - 10, tree.top - 30, width + 20, 30);
-    ctx.fillRect(tree.x - 10, canvas.height - tree.bottom, width + 20, 30);
-
-    ctx.fillStyle = "#4e342e";
-  });
-}
-
-// Update game
-function update() {
-  if (gameOver) return;
-
-  ctx.clearRect(0, 0, canvas.width, canvas.height);
-
-  // Bird physics
-  bird.dy += bird.gravity;
-  bird.y += bird.dy;
-
-  // Ground & ceiling collision
-  if (bird.y + bird.radius > canvas.height || bird.y - bird.radius < 0) {
-    endGame();
-  }
-
-  drawBird();
-
-  // Move trees
-  trees.forEach((tree, index) => {
-    tree.x -= speed;
-
-    // Collision detection
-    if (
-      bird.x + bird.radius > tree.x &&
-      bird.x - bird.radius < tree.x + width &&
-      (bird.y - bird.radius < tree.top ||
-       bird.y + bird.radius > canvas.height - tree.bottom)
-    ) {
-      endGame();
+    function resizeCanvas() {
+      canvasWidth = canvas.clientWidth;
+      canvasHeight = canvas.clientHeight;
+      canvas.width = canvasWidth;
+      canvas.height = canvasHeight;
+      if (!state.started) {
+        bird.y = canvasHeight / 2;
+      }
     }
 
-    // Remove off screen
-    if (tree.x + width < 0) {
-      trees.splice(index, 1);
+    function showMessage(text) {
+      messageBox.textContent = text;
+      messageBox.style.display = 'block';
     }
-  });
 
-  drawTrees();
+    function hideMessage() {
+      messageBox.style.display = 'none';
+    }
 
-  requestAnimationFrame(update);
-}
+    function resetGame() {
+      trees.length = 0;
+      state.score = 0;
+      state.gameOver = false;
+      state.paused = false;
+      bird.dy = 0;
+      bird.y = canvasHeight / 2;
+      scoreValue.textContent = '0';
+      hideMessage();
+      updateButtonStates();
+    }
 
-// Jump
-function jump() {
-  if (!gameOver) {
-    bird.dy = bird.lift;
-  }
-}
+    function updateButtonStates() {
+      playBtn.disabled = state.started && !state.gameOver;
+      pauseBtn.disabled = !state.started || state.paused || state.gameOver;
+      resumeBtn.disabled = !state.paused || state.gameOver;
+    }
 
-// End game
-function endGame() {
-  gameOver = true;
-  alert("Game Over!");
-  location.reload();
-}
+    function createTree() {
+      const topHeight = Math.random() * (canvasHeight - state.gap - 120) + 50;
+      trees.push({
+        x: canvasWidth,
+        top: topHeight,
+        bottom: canvasHeight - topHeight - state.gap,
+        passed: false
+      });
+    }
 
-// Controls
-document.addEventListener("click", jump);
-document.addEventListener("keydown", e => {
-  if (e.code === "Space") jump();
-});
+    function drawBird() {
+      ctx.beginPath();
+      ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
+      ctx.fillStyle = '#ffca28';
+      ctx.fill();
+      ctx.closePath();
 
-// Spawn trees
-setInterval(createTree, 2000);
+      ctx.beginPath();
+      ctx.arc(bird.x + 6, bird.y - 6, 4, 0, Math.PI * 2);
+      ctx.fillStyle = '#333';
+      ctx.fill();
+    }
 
-// Start
-update();
-</script>
+    function drawTrees() {
+      trees.forEach(tree => {
+        ctx.fillStyle = '#5d4037';
+        ctx.fillRect(tree.x, 0, state.treeWidth, tree.top);
+        ctx.fillRect(tree.x, canvasHeight - tree.bottom, state.treeWidth, tree.bottom);
 
+        ctx.fillStyle = '#2e7d32';
+        ctx.fillRect(tree.x - 10, tree.top - 28, state.treeWidth + 20, 28);
+        ctx.fillRect(tree.x - 10, canvasHeight - tree.bottom, state.treeWidth + 20, 28);
+      });
+    }
+
+    function drawBackground() {
+      const gradient = ctx.createLinearGradient(0, 0, 0, canvasHeight);
+      gradient.addColorStop(0, '#87ceeb');
+      gradient.addColorStop(0.7, '#81c784');
+      gradient.addColorStop(1, '#388e3c');
+      ctx.fillStyle = gradient;
+      ctx.fillRect(0, 0, canvasWidth, canvasHeight);
+
+      ctx.fillStyle = 'rgba(255, 255, 255, 0.12)';
+      for (let i = 0; i < 4; i++) {
+        ctx.beginPath();
+        ctx.arc(canvasWidth * 0.2 * (i + 1), canvasHeight * 0.15, 80, 0, Math.PI * 2);
+        ctx.fill();
+      }
+    }
+
+    function updateScore() {
+      if (!state.gameOver && state.started && !state.paused) {
+        state.score += 1;
+        scoreValue.textContent = state.score;
+      }
+    }
+
+    function endGame() {
+      state.gameOver = true;
+      state.paused = true;
+      showMessage('Game Over — Press Play to restart');
+      cancelAnimationFrame(animationId);
+      clearInterval(treeInterval);
+      clearInterval(scoreInterval);
+      updateButtonStates();
+    }
+
+    function checkCollisions(tree) {
+      const hitX = bird.x + bird.radius > tree.x && bird.x - bird.radius < tree.x + state.treeWidth;
+      const hitTop = bird.y - bird.radius < tree.top;
+      const hitBottom = bird.y + bird.radius > canvasHeight - tree.bottom;
+      return hitX && (hitTop || hitBottom);
+    }
+
+    function updateGame() {
+      if (!state.started || state.paused || state.gameOver) {
+        return;
+      }
+
+      ctx.clearRect(0, 0, canvasWidth, canvasHeight);
+      drawBackground();
+
+      bird.dy += bird.gravity;
+      bird.y += bird.dy;
+      if (bird.y + bird.radius > canvasHeight || bird.y - bird.radius < 0) {
+        endGame();
+      }
+
+      trees.forEach((tree, index) => {
+        tree.x -= state.speed;
+
+        if (!tree.passed && bird.x > tree.x + state.treeWidth) {
+          tree.passed = true;
+        }
+
+        if (checkCollisions(tree)) {
+          endGame();
+        }
+
+        if (tree.x + state.treeWidth < 0) {
+          trees.splice(index, 1);
+        }
+      });
+
+      drawTrees();
+      drawBird();
+      animationId = requestAnimationFrame(updateGame);
+    }
+
+    function jump() {
+      if (!state.started || state.paused || state.gameOver) return;
+      bird.dy = bird.lift;
+    }
+
+    function startGame() {
+      if (state.started && !state.gameOver) return;
+      if (state.gameOver) {
+        resetGame();
+      }
+
+      state.started = true;
+      state.paused = false;
+      hideMessage();
+      updateButtonStates();
+      resizeCanvas();
+      createTree();
+
+      treeInterval = setInterval(createTree, 2200);
+      scoreInterval = setInterval(updateScore, 200);
+      updateGame();
+    }
+
+    function pauseGame() {
+      if (!state.started || state.paused || state.gameOver) return;
+      state.paused = true;
+      cancelAnimationFrame(animationId);
+      clearInterval(treeInterval);
+      clearInterval(scoreInterval);
+      showMessage('Paused');
+      updateButtonStates();
+    }
+
+    function resumeGame() {
+      if (!state.started || !state.paused || state.gameOver) return;
+      state.paused = false;
+      hideMessage();
+      updateButtonStates();
+      treeInterval = setInterval(createTree, 2200);
+      scoreInterval = setInterval(updateScore, 200);
+      updateGame();
+    }
+
+    window.addEventListener('resize', () => {
+      resizeCanvas();
+    });
+
+    document.addEventListener('keydown', (e) => {
+      if (e.code === 'Space') {
+        jump();
+      }
+
+      if (e.code === 'KeyP') {
+        pauseGame();
+      }
+
+      if (e.code === 'KeyR') {
+        resumeGame();
+      }
+    });
+
+    document.addEventListener('click', (e) => {
+      if (e.target === canvas && state.started && !state.paused && !state.gameOver) {
+        jump();
+      }
+    });
+
+    playBtn.addEventListener('click', startGame);
+    pauseBtn.addEventListener('click', pauseGame);
+    resumeBtn.addEventListener('click', resumeGame);
+
+    resizeCanvas();
+    updateButtonStates();
+    showMessage('Press Play to start');
+  </script>
 </body>
 </html>
