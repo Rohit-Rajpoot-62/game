@@ -1,0 +1,161 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <title>Bird Forest Game</title>
+  <style>
+    body {
+      margin: 0;
+      overflow: hidden;
+      background: linear-gradient(to top, #2e7d32, #87ceeb);
+    }
+    canvas {
+      display: block;
+    }
+  </style>
+</head>
+<body>
+
+<canvas id="gameCanvas"></canvas>
+
+<script>
+const canvas = document.getElementById("gameCanvas");
+const ctx = canvas.getContext("2d");
+
+canvas.width = window.innerWidth;
+canvas.height = window.innerHeight;
+
+// Bird
+let bird = {
+  x: 120,
+  y: canvas.height / 2,
+  radius: 15,
+  dy: 0,
+  gravity: 0.5,
+  lift: -10
+};
+
+// Trees (pipes style)
+let trees = [];
+let gap = 180;
+let width = 60;
+let speed = 4;
+
+let gameOver = false;
+
+// Create trees
+function createTree() {
+  let topHeight = Math.random() * (canvas.height - gap - 100) + 50;
+
+  trees.push({
+    x: canvas.width,
+    top: topHeight,
+    bottom: canvas.height - topHeight - gap
+  });
+}
+
+// Draw bird
+function drawBird() {
+  ctx.beginPath();
+  ctx.arc(bird.x, bird.y, bird.radius, 0, Math.PI * 2);
+  ctx.fillStyle = "yellow";
+  ctx.fill();
+  ctx.closePath();
+
+  // Eye
+  ctx.beginPath();
+  ctx.arc(bird.x + 5, bird.y - 5, 3, 0, Math.PI * 2);
+  ctx.fillStyle = "black";
+  ctx.fill();
+}
+
+// Draw trees
+function drawTrees() {
+  ctx.fillStyle = "#4e342e"; // trunk
+
+  trees.forEach(tree => {
+    // Top tree
+    ctx.fillRect(tree.x, 0, width, tree.top);
+
+    // Bottom tree
+    ctx.fillRect(tree.x, canvas.height - tree.bottom, width, tree.bottom);
+
+    // Leaves
+    ctx.fillStyle = "#2e7d32";
+    ctx.fillRect(tree.x - 10, tree.top - 30, width + 20, 30);
+    ctx.fillRect(tree.x - 10, canvas.height - tree.bottom, width + 20, 30);
+
+    ctx.fillStyle = "#4e342e";
+  });
+}
+
+// Update game
+function update() {
+  if (gameOver) return;
+
+  ctx.clearRect(0, 0, canvas.width, canvas.height);
+
+  // Bird physics
+  bird.dy += bird.gravity;
+  bird.y += bird.dy;
+
+  // Ground & ceiling collision
+  if (bird.y + bird.radius > canvas.height || bird.y - bird.radius < 0) {
+    endGame();
+  }
+
+  drawBird();
+
+  // Move trees
+  trees.forEach((tree, index) => {
+    tree.x -= speed;
+
+    // Collision detection
+    if (
+      bird.x + bird.radius > tree.x &&
+      bird.x - bird.radius < tree.x + width &&
+      (bird.y - bird.radius < tree.top ||
+       bird.y + bird.radius > canvas.height - tree.bottom)
+    ) {
+      endGame();
+    }
+
+    // Remove off screen
+    if (tree.x + width < 0) {
+      trees.splice(index, 1);
+    }
+  });
+
+  drawTrees();
+
+  requestAnimationFrame(update);
+}
+
+// Jump
+function jump() {
+  if (!gameOver) {
+    bird.dy = bird.lift;
+  }
+}
+
+// End game
+function endGame() {
+  gameOver = true;
+  alert("Game Over!");
+  location.reload();
+}
+
+// Controls
+document.addEventListener("click", jump);
+document.addEventListener("keydown", e => {
+  if (e.code === "Space") jump();
+});
+
+// Spawn trees
+setInterval(createTree, 2000);
+
+// Start
+update();
+</script>
+
+</body>
+</html>
